@@ -34,9 +34,15 @@ async def honeypot(request: Request, x_api_key: str = Header(None)):
     is_scam = any(k in text for k in scam_keywords)
 
     return {
-        "scam_detected": is_scam,
-        "scam_type": "generic_scam" if is_scam else "none",
-        "confidence_score": 0.9 if is_scam else 0.2,
-        "extracted_entities": {},
-        "brief_conversation_summary": "Basic honeypot detection active."
+    "scam_detected": is_scam,
+    "scam_type": "generic_scam" if is_scam else "none",
+    "confidence_score": 0.9 if is_scam else 0.2,
+    "extracted_entities": {
+        "upi_ids": [],
+        "bank_accounts": [],
+        "phone_numbers": [],
+        "urls": []
+    },
+    "brief_conversation_summary": "Basic honeypot detection active."
     }
+
