@@ -43,6 +43,8 @@ async def honeypot(request: Request, x_api_key: str = Header(None)):
         "phone_numbers": [],
         "urls": []
     },
-    "brief_conversation_summary": "Basic honeypot detection active."
-    }
+    "conversation_summary": "Basic honeypot detection active."
+}
+
+
 
