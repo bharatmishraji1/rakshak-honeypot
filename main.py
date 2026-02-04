@@ -1,42 +1,42 @@
-from fastapi import FastAPI, Header, HTTPException
-from pydantic import BaseModel
-from typing import Optional
-import os, time
+from fastapi import FastAPI, Header, HTTPException, Request
+import os
 
-app = FastAPI(title = 'Rakshak-H Honeypot API')
+app = FastAPI()
 
-API_KEY = os.getenv('API_KEY', 'CHANGE_ME')
+API_KEY = os.getenv("API_KEY", "RAKSHAK_SECRET_123")
 
-class HoneypotRequest(BaseModel):
-    class HoneypotRequest(BaseModel):
-    message: Optional[str] = None
-    text: Optional[str] = None
-    input: Optional[str] = None
-    conversation_id: Optional[str] = None
-
-    
-class HoneypotResponse(BaseModel):
-    
-    scam_detected: bool
-    agent_activated: bool
-    message: str
-
-@app.post("/honeypot", response_model=HoneypotResponse)
-def honeypot(payload: HoneypotRequest, x_api_key: str = Header(None)):
+@app.post("/honeypot")
+async def honeypot(request: Request, x_api_key: str = Header(None)):
+    # API key check
     if x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
-    time.sleep(1)
+    # Accept ANY JSON body
+    try:
+        payload = await request.json()
+    except:
+        payload = {}
 
-    raw_text = payload.message or payload.text or payload.input or ""
-    text = raw_text.lower()
-    scam_keywords = ["upi","account","blocked","verify","refund","payment","bank","otp"]
+    # Extract text from any possible field
+    raw_text = ""
+    if isinstance(payload, dict):
+        raw_text = (
+            payload.get("message")
+            or payload.get("text")
+            or payload.get("input")
+            or payload.get("content")
+            or ""
+        )
+
+    text = str(raw_text).lower()
+
+    scam_keywords = ["upi", "account", "blocked", "verify", "refund", "payment", "bank", "otp"]
     is_scam = any(k in text for k in scam_keywords)
-    
+
     return {
         "scam_detected": is_scam,
-        "agent_activated": is_scam,
-        "message": "Honeypot active and ready." if not is_scam
-                   else "Scam intent detected. Autonomous agent engaged."
-
+        "scam_type": "generic_scam" if is_scam else "none",
+        "confidence_score": 0.9 if is_scam else 0.2,
+        "extracted_entities": {},
+        "brief_conversation_summary": "Basic honeypot detection active."
     }
