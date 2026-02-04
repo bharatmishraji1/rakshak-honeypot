@@ -1,85 +1,108 @@
-from fastapi import FastAPI, Header, HTTPException
-from pydantic import BaseModel
-from typing import Optional, Dict, List
+from fastapi import FastAPI, Header, HTTPException, Request
 import os
+import re
 
 app = FastAPI()
 
 API_KEY = os.getenv("API_KEY", "RAKSHAK_SECRET_123")
 
 
-# Request schema (flexible but structured)
-class HoneypotRequest(BaseModel):
-    message: Optional[str] = None
-    content: Optional[str] = None
-    text: Optional[str] = None
-    conversation_id: Optional[str] = None
-
-
 @app.post("/honeypot")
-async def honeypot(payload: HoneypotRequest, x_api_key: str = Header(None)):
+async def honeypot(request: Request, x_api_key: str = Header(None)):
     # API key check
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    # Extract text safely
-    raw_text = payload.message or payload.content or payload.text or ""
-    text = raw_text.lower()
+    # Raw JSON accept
+    try:
+        data = await request.json()
+    except:
+        data = {}
 
-    # Detection logic
-    financial_keywords = [
-        "upi", "payment", "transfer", "wallet", "bank", "transaction"
-    ]
+    # Extract text from possible fields
+    text = ""
+    if isinstance(data, dict):
+        text = (
+            str(data.get("message", "")) +
+            str(data.get("content", "")) +
+            str(data.get("text", ""))
+        ).lower()
 
-    urgency_keywords = [
-        "urgent", "immediately", "last warning", "final notice", "freeze"
-    ]
+    # ----------------------------
+    # SCAM DETECTION LOGIC
+    # ----------------------------
 
-    credential_keywords = [
-        "otp", "pin", "cvv", "card", "password", "login"
-    ]
+    scam_categories = {
+        "bank_kyc": [
+            "kyc", "blocked", "account", "verify", "bank",
+            "update", "suspend", "freeze"
+        ],
+        "payment_scam": [
+            "upi", "payment", "transfer", "send money",
+            "processing fee", "charge"
+        ],
+        "otp_scam": [
+            "otp", "one time password", "code", "verification code"
+        ],
+        "job_scam": [
+            "job", "work from home", "salary", "registration fee",
+            "apply now", "seat", "task"
+        ],
+        "lottery_scam": [
+            "lottery", "prize", "winner", "reward", "claim now"
+        ],
+        "refund_scam": [
+            "refund", "cashback", "return", "amount credited"
+        ],
+        "phishing_link": [
+            "link", "click", "http", "www", ".com", ".net"
+        ]
+    }
 
-    refund_keywords = ["refund", "cashback", "reward"]
-    job_keywords = ["job", "registration fee", "processing fee"]
-    lottery_keywords = ["lottery", "winner", "prize"]
-    kyc_keywords = ["kyc", "update", "verify", "blocked"]
+    scam_score = 0
+    detected_types = []
 
-    score = 0.0
+    for scam_type, keywords in scam_categories.items():
+        for kw in keywords:
+            if kw in text:
+                scam_score += 1
+                detected_types.append(scam_type)
+                break
 
-    if any(k in text for k in financial_keywords):
-        score += 0.3
-    if any(k in text for k in urgency_keywords):
-        score += 0.2
-    if any(k in text for k in credential_keywords):
-        score += 0.4
-    if any(k in text for k in refund_keywords + job_keywords + lottery_keywords + kyc_keywords):
-        score += 0.3
+    # Final decision
+    is_scam = scam_score >= 2
 
-    confidence = min(score, 1.0)
-    is_scam = confidence > 0.4
-
-    # Scam type
-    if any(k in text for k in kyc_keywords):
-        scam_type = "kyc_scam"
-    elif any(k in text for k in refund_keywords):
-        scam_type = "refund_scam"
-    elif any(k in text for k in job_keywords):
-        scam_type = "job_scam"
-    elif any(k in text for k in lottery_keywords):
-        scam_type = "lottery_scam"
+    if detected_types:
+        scam_type = max(set(detected_types), key=detected_types.count)
     else:
-        scam_type = "generic_scam" if is_scam else "none"
+        scam_type = "none"
 
-    # Final response
+    # Confidence calculation
+    confidence = min(0.4 + (scam_score * 0.1), 0.95) if is_scam else 0.2
+
+    # ----------------------------
+    # ENTITY EXTRACTION
+    # ----------------------------
+
+    upi_pattern = r"\b[\w\.-]+@[\w]+\b"
+    phone_pattern = r"\b\d{10}\b"
+    url_pattern = r"(https?://[^\s]+)"
+    bank_pattern = r"\b\d{9,18}\b"
+
+    upi_ids = re.findall(upi_pattern, text)
+    phone_numbers = re.findall(phone_pattern, text)
+    urls = re.findall(url_pattern, text)
+    bank_accounts = re.findall(bank_pattern, text)
+
     return {
         "scam_detected": is_scam,
         "scam_type": scam_type,
-        "confidence_score": confidence,
+        "confidence_score": round(confidence, 2),
         "extracted_entities": {
-            "upi_ids": [],
-            "bank_accounts": [],
-            "phone_numbers": [],
-            "urls": []
+            "upi_ids": list(set(upi_ids)),
+            "bank_accounts": list(set(bank_accounts)),
+            "phone_numbers": list(set(phone_numbers)),
+            "urls": list(set(urls))
         },
-        "conversation_summary": "Basic honeypot detection active."
+        "conversation_summary": "Scam analysis completed using rule-based engine."
     }
