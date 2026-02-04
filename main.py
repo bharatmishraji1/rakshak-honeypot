@@ -8,8 +8,12 @@ app = FastAPI(title = 'Rakshak-H Honeypot API')
 API_KEY = os.getenv('API_KEY', 'CHANGE_ME')
 
 class HoneypotRequest(BaseModel):
-    message : str
-    conversation_id : Optional[str] = None
+    class HoneypotRequest(BaseModel):
+    message: Optional[str] = None
+    text: Optional[str] = None
+    input: Optional[str] = None
+    conversation_id: Optional[str] = None
+
     
 class HoneypotResponse(BaseModel):
     
@@ -24,7 +28,8 @@ def honeypot(payload: HoneypotRequest, x_api_key: str = Header(None)):
 
     time.sleep(1)
 
-    text = payload.message.lower()
+    raw_text = payload.message or payload.text or payload.input or ""
+    text = raw_text.lower()
     scam_keywords = ["upi","account","blocked","verify","refund","payment","bank","otp"]
     is_scam = any(k in text for k in scam_keywords)
     
@@ -33,4 +38,5 @@ def honeypot(payload: HoneypotRequest, x_api_key: str = Header(None)):
         "agent_activated": is_scam,
         "message": "Honeypot active and ready." if not is_scam
                    else "Scam intent detected. Autonomous agent engaged."
+
     }
